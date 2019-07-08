@@ -10,6 +10,7 @@ use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Yaml\Yaml;
 use GuzzleHttp\Exception\GuzzleException;
 use Wikimedia\Phester\Instructions;
+use Wikimedia\Phester\PlainResult;
 use Wikimedia\Phester\TestSuite;
 
 /**
@@ -56,19 +57,16 @@ class TestCommand extends SymfonyCommand {
 		$files = $input->getArgument( 'file_paths' );
 
 		foreach ( $files as $file ) {
-			$results = Yaml::parseFile( $file, Yaml::PARSE_CUSTOM_TAGS );
+			$instructionData = Yaml::parseFile( $file, Yaml::PARSE_CUSTOM_TAGS );
+			$result = new PlainResult();
 			$logger = new Logger( "Phester" );
 			$client = new Client( [ 'base_uri' => $base_uri ] );
-			$testSuite = new TestSuite( new Instructions( $results ), $logger, $client );
+			$testSuite = new TestSuite( new Instructions( $instructionData ), $result, $logger, $client );
 
-			// TODO: $testSuiteOutput should be class with methods for formatting as plain text or html or
-			// json
-			$testSuiteOutput = $testSuite->run();
+			$testSuite->run();
 
-			if ( !empty( $testSuiteOutput ) ) {
-				$output->writeln( $testSuiteOutput );
-			}
-
+			// TODO: $result should have methods for formatting as plain text or HTML or JSON
+			$output->writeln( $result->getLines() );
 		}
 	}
 

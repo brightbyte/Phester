@@ -1,7 +1,9 @@
 <?php
 
+use GuzzleHttp\Exception\GuzzleException;
 use PHPUnit\Framework\TestCase;
 use Wikimedia\Phester\Instructions;
+use Wikimedia\Phester\PlainResult;
 use Wikimedia\Phester\TestSuite;
 use Monolog\Handler\TestHandler;
 use Symfony\Bridge\Monolog\Logger;
@@ -121,13 +123,14 @@ class TestSuiteTest extends TestCase {
 	 * @dataProvider provideBadRunData
 	 * @param array $suiteData
 	 * @param string $expected
-	 * @throws \GuzzleHttp\Exception\GuzzleException
+	 * @throws GuzzleException
 	 */
 	public function testRunWithMissingOrInvalidInformation( $suiteData, $expected ) {
 		$client  = $this->getClient( [
 			new Response( 200, [ 'content-type' => 'application/json' ] ),
 		] );
-		$testSuite = new TestSuite( new Instructions( $suiteData ), $this->logger, $client );
+		$result = new PlainResult();
+		$testSuite = new TestSuite( new Instructions( $suiteData ), $result, $this->logger, $client );
 
 		$testSuite->run();
 		list( $record ) = $this->handler->getRecords();
@@ -136,7 +139,7 @@ class TestSuiteTest extends TestCase {
 	}
 
 	/**
-	 * @throws \GuzzleHttp\Exception\GuzzleException
+	 * @throws GuzzleException
 	 */
 	public function testRunWithFile() {
 		$client = $this->getClient( [
@@ -151,9 +154,11 @@ class TestSuiteTest extends TestCase {
 
 		$data = Yaml::parseFile( __DIR__ . '/unittest.yaml', Yaml::PARSE_CUSTOM_TAGS );
 
-		$testsuite = new TestSuite( new Instructions( $data ), $this->logger, $client );
+		$result = new PlainResult();
+		$testsuite = new TestSuite( new Instructions( $data ), $result, $this->logger, $client );
+		$testsuite->run();
 
-		$this->assertEquals( $testsuite->run(), [ '- Suite: UnitTest' ] );
+		$this->assertEquals( [ '- Suite: UnitTest' ], $result->getLines() );
 	}
 
 	public function provideInteraction() {
@@ -227,9 +232,9 @@ class TestSuiteTest extends TestCase {
 			],
 			[
 				"- Suite: UnitTest",
-				"! Test failed: get foo",
+				"! get foo failed:",
 				"\tStatus: expected: 200, actual: 302",
-				"! Test failed: get xyz",
+				"! get xyz failed:",
 				"\tBody JSON: expected:{\"pages\":{\"pageid\":\"143\"}} actual: {\"pages\":{\"pageids\":77}}",
 			]
 		];
@@ -241,10 +246,11 @@ class TestSuiteTest extends TestCase {
 	public function testInteraction( $instructions, $responses, $output ) {
 		$client = $this->getClient( $responses );
 
-		$testsuite = new TestSuite( new Instructions( $instructions ), $this->logger, $client );
-		$result = $testsuite->run();
+		$result = new PlainResult();
+		$testsuite = new TestSuite( new Instructions( $instructions ), $result, $this->logger, $client );
+		$testsuite->run();
 
-		$this->assertEquals( $result, $output );
+		$this->assertEquals( $output, $result->getLines() );
 	}
 
 	/**
