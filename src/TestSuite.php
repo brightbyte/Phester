@@ -27,65 +27,66 @@ class TestSuite {
 	private $suiteData;
 
 	/**
+	 * @var Result
+	 */
+	private $result;
+
+	/**
 	 * TestSuite constructor
+	 *
 	 * @param Instructions $suiteData
+	 * @param Result $result An uninitialized Result object.
 	 * @param LoggerInterface $logger
 	 * @param Client $client
 	 */
-	public function __construct( Instructions $suiteData,
-								 LoggerInterface $logger, Client $client ) {
+	public function __construct(
+		Instructions $suiteData,
+		Result $result,
+		LoggerInterface $logger,
+		Client $client
+	) {
 		$this->suiteData = $suiteData;
-
+		$this->result = $result;
 		$this->logger = $logger;
 		$this->client = $client;
 	}
 
 	/**
 	 * Runs test suite
-	 * @return array|void errors from test suite
-	 * @throws GuzzleException
 	 */
 	public function run() {
-		$output = [];
-		$output[] = "- Suite: " . $this->suiteData->get( 'suite' );
-
 		if ( !$this->suiteData->has( 'suite' ) || !$this->suiteData->has( 'description' ) ) {
 			$this->logger->error( "Test suite must include 'suite' and 'description'" );
 			return;
 		}
 
+		$this->result->init( $this->suiteData->get( 'suite' ), $this->suiteData->get( 'description', '' ) );
+
 		if ( $this->suiteData->has( 'setup' ) ) {
 			$errors = $this->runInteraction( $this->suiteData->get( 'setup' ) );
+			$this->result->logOutcome( "Setup", $errors );
 
 			if ( $errors ) {
-				$output[] = "! Setup failed:";
-				$output = array_merge( $output, $errors );
-				return $output;
+				return;
 			}
 		}
 
 		if ( $this->suiteData->has( 'tests' ) ) {
-			$errors = $this->runTests( $this->suiteData->get( 'tests' ) );
-
-			if ( $errors ) {
-				$output = array_merge( $output, $errors );
-			}
+			$this->runTests( $this->suiteData->get( 'tests' ) );
 		} else {
 			$this->logger->error( "Test suites must have the 'tests' keyword" );
 			return;
 		}
 
-		return $output;
+		$this->result->close();
 	}
 
 	/**
 	 * Runs the given tests from YAML
 	 * @param Instructions $tests
-	 * @return array|void errors from tests
 	 * @throws GuzzleException
 	 */
 	private function runTests( $tests ) {
-		$output = [];
 		foreach ( $tests->getArray() as $test ) {
 			$test = new Instructions( $test );
 
@@ -98,13 +99,8 @@ class TestSuite {
 			$interaction = $test->get( 'interaction' );
 
 			$errors = $this->runInteraction( $interaction );
-
-			if ( $errors ) {
-				$output[] = "! Test failed: $description";
-				$output = array_merge( $output, $errors );
-			}
+			$this->result->logOutcome( $description, $errors );
 		}
-		return $output;
 	}
 
 	/**
@@ -281,7 +277,7 @@ class TestSuite {
 					$assertionResult = $this->assertMatch( $value, $actual->getStatusCode(), 'Status' );
 
 					if ( $assertionResult ) {
-						$output[] = "\t$assertionResult";
+						$output[] = $assertionResult;
 					}
 					break;
 				case 'headers':
@@ -290,7 +286,7 @@ class TestSuite {
 							"$header header" );
 
 						if ( $assertionResult ) {
-							$output[] = "\t$assertionResult";
+							$output[] = $assertionResult;
 						}
 					};
 					break;
@@ -299,13 +295,13 @@ class TestSuite {
 
 					if ( is_array( $value ) ) {
 						if ( !$this->compareArrays( $value, json_decode( $body, true ) ) ) {
-							$output[] = "\tBody JSON: expected:" . json_encode( $value ) . " actual: $body";
+							$output[] = "Body JSON: expected:" . json_encode( $value ) . " actual: $body";
 						}
 					} else {
 						$assertionResult = $this->assertMatch( $value, $body, 'Body text' );
 
 						if ( $assertionResult ) {
-							$output[] = "\t$assertionResult";
+							$output[] = $assertionResult;
 						}
 					}
 					break;
